@@ -456,6 +456,7 @@ dependencies = [
  "clap",
  "dialoguer",
  "dotenv",
+ "futures",
  "octocrab",
  "serde",
  "serde_json",

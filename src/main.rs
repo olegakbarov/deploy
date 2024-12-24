@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use dialoguer::{theme::ColorfulTheme, Select};
 use serde::Deserialize;
 use std::env;
+use std::sync::Arc;
 
 #[derive(Debug, Deserialize)]
 struct SearchResponse {
@@ -16,6 +17,34 @@ struct Issue {
 
 #[derive(Debug, Deserialize)]
 struct PullRequestRef {}
+
+async fn fetch_prs(
+    octocrab: Arc<octocrab::Octocrab>,
+    owner: String,
+    repo: String,
+    current_user: String,
+) -> Result<Vec<octocrab::models::pulls::PullRequest>> {
+    // Fetch PRs logic moved to separate function
+    let search_response = octocrab
+        .get::<SearchResponse, _, _>(
+            "/search/issues",
+            Some(&serde_json::json!({
+                "q": format!("type:pr state:open author:{} repo:{}/{}", current_user, owner, repo)
+            })),
+        )
+        .await
+        .context("Failed to fetch PRs. Please check repository name and permissions")?;
+
+    let mut prs = Vec::new();
+    for issue in search_response.items {
+        if let Some(_pr_ref) = issue.pull_request {
+            if let Some(pr) = octocrab.pulls(&owner, &repo).get(issue.number).await.ok() {
+                prs.push(pr);
+            }
+        }
+    }
+    Ok(prs)
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -49,19 +78,19 @@ async fn main() -> Result<()> {
         .login;
     println!("Authenticated as: {}", current_user);
 
-    let environments = vec![
-        "experimental1",
-        "experimental2",
-        "experimental3",
-        "experimental4",
-        "experimental5",
-        "experimental6",
-    ];
+    let octocrab = Arc::new(octocrab);
+    let pr_fetch = tokio::spawn({
+        let octocrab = Arc::clone(&octocrab);
+        let owner = owner.clone();
+        let repo = repo.clone();
+        let current_user = current_user.clone();
+        async move { fetch_prs(octocrab, owner, repo, current_user).await }
+    });
 
-    // Create formatted options for display
+    // Show environment selection while PRs are being fetched
+    let environments: Vec<String> = (1..=6).map(|i| format!("experimental{i}")).collect();
     let env_options: Vec<String> = environments.iter().map(|e| e.to_string()).collect();
 
-    // Create environment selection prompt
     let env_selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select environment to use")
         .items(&env_options)
@@ -69,33 +98,13 @@ async fn main() -> Result<()> {
         .interact()?;
 
     let selected_env = &environments[env_selection];
-
     println!("\nSelected environment: {}", selected_env);
 
+    // Wait for PR fetching to complete
     println!("Fetching PRs from {}/{}...", owner, repo);
-    // First get the PR numbers from search
-    let search_response = octocrab
-        .get::<SearchResponse, _, _>(
-            "/search/issues",
-            Some(&serde_json::json!({
-                "q": format!("type:pr state:open author:{} repo:{}/{}", current_user, owner, repo)
-            })),
-        )
-        .await
-        .context("Failed to fetch PRs. Please check repository name and permissions")?;
+    let prs = pr_fetch.await.context("PR fetch task failed")??;
 
-    // Then fetch full PR details for each one
-    let mut prs = Vec::new();
-    for issue in search_response.items {
-        if let Some(_pr_ref) = issue.pull_request {
-            // Extract PR number from the URL
-            if let Some(pr) = octocrab.pulls(&owner, &repo).get(issue.number).await.ok() {
-                prs.push(pr);
-            }
-        }
-    }
-
-    // Create selection menu for PRs
+    // Rest of the PR selection and workflow dispatch code remains the same
     let pr_titles: Vec<String> = prs
         .iter()
         .map(|pr| {
