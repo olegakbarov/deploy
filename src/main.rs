@@ -131,59 +131,14 @@ async fn main() -> Result<()> {
 
     let commit_hash = last_commit.sha[..7].to_string();
 
-    println!("Branch: {}", branch_name);
-    println!("Commit: {}", commit_hash);
-    println!("Environment: experimental{}", selected_env);
-
-    // List available workflows first
-    // let workflows = octocrab
-    //     .workflows(&owner, &repo)
-    //     .list()
-    //     .send()
-    //     .await
-    //     .context("Failed to fetch workflows")?;
-
-    // println!("\nAvailable workflows:");
-    // for workflow in &workflows.items {
-    //     println!(
-    //         "ID: {}, Name: {}, File: {}",
-    //         workflow.id, workflow.name, workflow.path
-    //     );
-    // }
-
-    // // Ask user to select workflow
-    // let workflow_options: Vec<String> = workflows
-    //     .items
-    //     .iter()
-    //     .map(|w| format!("{} ({})", w.name, w.path))
-    //     .collect();
-
-    // let workflow_selection = Select::with_theme(&ColorfulTheme::default())
-    //     .with_prompt("Select workflow to run")
-    //     .items(&workflow_options)
-    //     .default(0)
-    //     .interact()?;
-
-    // let selected_workflow = &workflows.items[workflow_selection];
-
-    // println!(
-    //     "\nTriggering workflow: {} (ID: {})",
-    //     selected_workflow.name, selected_workflow.id
-    // );
-
     // Trigger the GitHub Action using the proper workflow ID
     let body = serde_json::json!({
         "ref": branch_name,
         "inputs": {
             "commit_sha": commit_hash,
-            "target": format!("{}",  env_selection)
+            "target": format!("{}",  selected_env)
         }
     });
-
-    println!(
-        "Sending request with payload: {}",
-        serde_json::to_string_pretty(&body)?
-    );
 
     // Trigger the GitHub Action using the proper workflow ID
     octocrab
@@ -212,7 +167,7 @@ async fn main() -> Result<()> {
     println!("Successfully triggered GitHub Action:");
     println!("Branch: {}", branch_name);
     println!("Commit: {}", commit_hash);
-    println!("Environment: {}", env_selection);
+    println!("Environment: {}", selected_env);
 
     Ok(())
 }
