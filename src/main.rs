@@ -98,7 +98,6 @@ async fn main() -> Result<()> {
         .interact()?;
 
     let selected_env = &environments[env_selection];
-    println!("\nSelected environment: {}", selected_env);
 
     // Wait for PR fetching to complete
     println!("Fetching PRs from {}/{}...", owner, repo);
