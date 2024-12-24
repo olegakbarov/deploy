@@ -1,33 +1,31 @@
 use anyhow::{Context, Result};
-use clap::Parser;
 use dialoguer::{theme::ColorfulTheme, Select};
-use octocrab::{models::pulls::PullRequest, params::State};
+use serde::Deserialize;
 use std::env;
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Environment number (1-6)
-    #[arg(value_parser = validate_environment)]
-    environment: u8,
+#[derive(Debug, Deserialize)]
+struct SearchResponse {
+    items: Vec<Issue>,
 }
 
-fn validate_environment(s: &str) -> Result<u8, String> {
-    let env: u8 = s.parse().map_err(|_| "Environment must be a number")?;
-    if (1..=6).contains(&env) {
-        Ok(env)
-    } else {
-        Err("Environment must be between 1 and 6".to_string())
-    }
+#[derive(Debug, Deserialize)]
+struct Issue {
+    number: u64,
+    pull_request: Option<PullRequestRef>,
 }
+
+#[derive(Debug, Deserialize)]
+struct PullRequestRef {}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
-    let args = Args::parse();
 
     // Get GitHub token from environment
     let token = env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not found in environment")?;
+
+    let workflow_id = env::var("DEPLOY_EXPERIMENTAL_WORKFLOW_ID")
+        .context("DEPLOY_EXPERIMENTAL_WORKFLOW_ID not found in environment")?;
 
     let octocrab = octocrab::Octocrab::builder()
         .personal_token(token)
@@ -51,31 +49,50 @@ async fn main() -> Result<()> {
         .login;
     println!("Authenticated as: {}", current_user);
 
+    let environments = vec![
+        "experimental1",
+        "experimental2",
+        "experimental3",
+        "experimental4",
+        "experimental5",
+        "experimental6",
+    ];
+
+    // Create formatted options for display
+    let env_options: Vec<String> = environments.iter().map(|e| e.to_string()).collect();
+
+    // Create environment selection prompt
+    let env_selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select environment to use")
+        .items(&env_options)
+        .default(0)
+        .interact()?;
+
+    let selected_env = &environments[env_selection];
+
+    println!("\nSelected environment: {}", selected_env);
+
     println!("Fetching PRs from {}/{}...", owner, repo);
-    // Get open PRs
-    let pulls = octocrab
-        .pulls(&owner, &repo)
-        .list()
-        .state(State::Open)
-        .send()
+    // First get the PR numbers from search
+    let search_response = octocrab
+        .get::<SearchResponse, _, _>(
+            "/search/issues",
+            Some(&serde_json::json!({
+                "q": format!("type:pr state:open author:{} repo:{}/{}", current_user, owner, repo)
+            })),
+        )
         .await
         .context("Failed to fetch PRs. Please check repository name and permissions")?;
 
-    // Filter PRs by author
-    let prs: Vec<PullRequest> = pulls
-        .items
-        .into_iter()
-        .filter(|pr| {
-            pr.user
-                .as_ref()
-                .map(|u| u.login == current_user)
-                .unwrap_or(false)
-        })
-        .collect();
-
-    if prs.is_empty() {
-        println!("No open pull requests found for your user");
-        return Ok(());
+    // Then fetch full PR details for each one
+    let mut prs = Vec::new();
+    for issue in search_response.items {
+        if let Some(_pr_ref) = issue.pull_request {
+            // Extract PR number from the URL
+            if let Some(pr) = octocrab.pulls(&owner, &repo).get(issue.number).await.ok() {
+                prs.push(pr);
+            }
+        }
     }
 
     // Create selection menu for PRs
@@ -116,50 +133,50 @@ async fn main() -> Result<()> {
 
     println!("Branch: {}", branch_name);
     println!("Commit: {}", commit_hash);
-    println!("Environment: experimental{}", args.environment);
+    println!("Environment: experimental{}", selected_env);
 
     // List available workflows first
-    let workflows = octocrab
-        .workflows(&owner, &repo)
-        .list()
-        .send()
-        .await
-        .context("Failed to fetch workflows")?;
+    // let workflows = octocrab
+    //     .workflows(&owner, &repo)
+    //     .list()
+    //     .send()
+    //     .await
+    //     .context("Failed to fetch workflows")?;
 
-    println!("\nAvailable workflows:");
-    for workflow in &workflows.items {
-        println!(
-            "ID: {}, Name: {}, File: {}",
-            workflow.id, workflow.name, workflow.path
-        );
-    }
+    // println!("\nAvailable workflows:");
+    // for workflow in &workflows.items {
+    //     println!(
+    //         "ID: {}, Name: {}, File: {}",
+    //         workflow.id, workflow.name, workflow.path
+    //     );
+    // }
 
-    // Ask user to select workflow
-    let workflow_options: Vec<String> = workflows
-        .items
-        .iter()
-        .map(|w| format!("{} ({})", w.name, w.path))
-        .collect();
+    // // Ask user to select workflow
+    // let workflow_options: Vec<String> = workflows
+    //     .items
+    //     .iter()
+    //     .map(|w| format!("{} ({})", w.name, w.path))
+    //     .collect();
 
-    let workflow_selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select workflow to run")
-        .items(&workflow_options)
-        .default(0)
-        .interact()?;
+    // let workflow_selection = Select::with_theme(&ColorfulTheme::default())
+    //     .with_prompt("Select workflow to run")
+    //     .items(&workflow_options)
+    //     .default(0)
+    //     .interact()?;
 
-    let selected_workflow = &workflows.items[workflow_selection];
+    // let selected_workflow = &workflows.items[workflow_selection];
 
-    println!(
-        "\nTriggering workflow: {} (ID: {})",
-        selected_workflow.name, selected_workflow.id
-    );
+    // println!(
+    //     "\nTriggering workflow: {} (ID: {})",
+    //     selected_workflow.name, selected_workflow.id
+    // );
 
     // Trigger the GitHub Action using the proper workflow ID
     let body = serde_json::json!({
         "ref": branch_name,
         "inputs": {
             "commit_sha": commit_hash,
-            "target": format!("experimental{}", args.environment)
+            "target": format!("{}",  env_selection)
         }
     });
 
@@ -174,7 +191,7 @@ async fn main() -> Result<()> {
         .create_workflow_dispatch(
             &owner,
             &repo,
-            selected_workflow.id.to_string(),
+            workflow_id, // selected_workflow.id.to_string(),
             &branch_name,
         )
         .inputs(serde_json::Value::Object(
@@ -195,7 +212,7 @@ async fn main() -> Result<()> {
     println!("Successfully triggered GitHub Action:");
     println!("Branch: {}", branch_name);
     println!("Commit: {}", commit_hash);
-    println!("Environment: experimental{}", args.environment);
+    println!("Environment: {}", env_selection);
 
     Ok(())
 }
