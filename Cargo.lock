@@ -259,6 +259,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "deploy"
+version = "1.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dialoguer",
+ "dotenv",
+ "futures",
+ "octocrab",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -446,21 +461,6 @@ dependencies = [
  "libc",
  "wasi",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "gha-runner"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dialoguer",
- "dotenv",
- "futures",
- "octocrab",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

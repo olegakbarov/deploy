@@ -18,6 +18,8 @@ struct Issue {
 #[derive(Debug, Deserialize)]
 struct PullRequestRef {}
 
+const NUMBER_OF_EXPERIMENTAL_ENVIRONMENTS: usize = 8;
+
 async fn fetch_prs(
     octocrab: Arc<octocrab::Octocrab>,
     owner: String,
@@ -88,7 +90,9 @@ async fn main() -> Result<()> {
     });
 
     // Show environment selection while PRs are being fetched
-    let environments: Vec<String> = (1..=6).map(|i| format!("experimental{i}")).collect();
+    let environments: Vec<String> = (1..=NUMBER_OF_EXPERIMENTAL_ENVIRONMENTS)
+        .map(|i| format!("experimental{i}"))
+        .collect();
     let env_options: Vec<String> = environments.iter().map(|e| e.to_string()).collect();
 
     let env_selection = Select::with_theme(&ColorfulTheme::default())

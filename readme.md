@@ -22,7 +22,7 @@ A command-line tool for triggering GitHub Actions workflows for your pull reques
 2. Build the project:
 
 ```bash
-cp target/release/gh-workflow-trigger ~/.local/bin/deploy
+cp target/release/deploy ~/.local/bin/deploy
 ```
 
 ```bash
