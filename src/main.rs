@@ -18,7 +18,7 @@ struct Issue {
 #[derive(Debug, Deserialize)]
 struct PullRequestRef {}
 
-const NUMBER_OF_EXPERIMENTAL_ENVIRONMENTS: usize = 8;
+const NUMBER_OF_EXPERIMENTAL_ENVIRONMENTS: usize = 15;
 
 async fn fetch_prs(
     octocrab: Arc<octocrab::Octocrab>,
